@@ -34,7 +34,24 @@ start = time.time()
 for i in range(pixelCount):
     gray = r[i]//3 + g[i]//3 + b[i]//3 # //3 to prevent overflow
     oneD_img2[i] = [gray, gray, gray]
+end = time.time()
+print(f'CPU Time: {end-start}')
 
+oneD_img2 = oneD_img2.reshape(h, w, c)
+plt.imshow(oneD_img2)
+plt.savefig('hehehe_gray_cpu.png')
+
+# --- CPU version, I dont like // so let's do smth else ---
+oneD_img2 = np.zeros((pixelCount, c), dtype=np.uint8)
+
+r, g, b = oneD_img[:, 0], oneD_img[:, 1], oneD_img[:, 2]
+
+start = time.time()
+for i in range(pixelCount):
+    gray = int(r[i]/3) + int(g[i]/3) + int(b[i]/3)
+    if gray > 255:
+        gray = np.uint8(255)
+    oneD_img2[i] = [gray, gray, gray]
 end = time.time()
 print(f'CPU Time: {end-start}')
 
@@ -60,7 +77,7 @@ def grayscale(src, dst):
 
 # define block size and grid size for kernel launch
 blockSize = 64
-gridSize = pixelCount // blockSize
+gridSize = int(pixelCount / blockSize) + 1 # prevent unprocess pixels?
 oneD_img2_gpu = np.zeros((pixelCount, c), dtype=np.uint8)
 
 # gray image on device
@@ -81,3 +98,30 @@ plt.imshow(oneD_img2_gpu)
 plt.savefig('hehehe_gray_gpu.png')
 
 
+# try different block sizes
+two_hat = [2**i for i in range(1, 8)]
+
+time_results = []
+
+for blockSize in two_hat:
+    value = 0
+    # exp for 1000 times and take avg
+    for _ in range(1000):
+        gridSize = int(pixelCount / blockSize) + 1 # prevent unprocess pixels?
+        oneD_img2_gpu = np.zeros((pixelCount, c), dtype=np.uint8)
+        d_oneD_img2 = cuda.device_array(oneD_img.shape, dtype=np.uint8)
+        start = time.time()
+        grayscale[gridSize, blockSize](d_oneD_img, d_oneD_img2)
+        d_oneD_img2.copy_to_host(oneD_img2_gpu)
+        end = time.time()
+        value += (end-start)
+    time_results.append(value / 1000)
+
+plt.figure()
+plt.plot(two_hat, time_results)
+plt.xticks(two_hat, labels=[str(x) for x in two_hat])
+plt.xscale('log', base=2)
+plt.xlabel('Block Size')
+plt.ylabel('Time (s)')
+plt.title('Block Size vs Time')
+plt.savefig('block_size_vs_time.png')
